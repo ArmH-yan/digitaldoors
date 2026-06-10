@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: leadgen-postgres
+    environment:
+      POSTGRES_DB: leadgen
+      POSTGRES_USER: leadgen_user
+      POSTGRES_PASSWORD: leadgen_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leadgen_user -d leadgen"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  scraper:
+    build: .
+    container_name: leadgen-scraper
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=leadgen
+      - DATABASE_USER=leadgen_user
+      - DATABASE_PASSWORD=leadgen_pass
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./exports:/app/exports
+      - ./logs:/app/logs
+    command: python main.py
+
+volumes:
+  postgres_data:
