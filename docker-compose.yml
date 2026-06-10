@@ -6,36 +6,31 @@ services:
     container_name: leadgen-postgres
     environment:
       POSTGRES_DB: leadgen
-      POSTGRES_USER: leadgen_user
-      POSTGRES_PASSWORD: leadgen_pass
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql
+      - ./sql/schema/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U leadgen_user -d leadgen"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d leadgen"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  scraper:
-    build: .
-    container_name: leadgen-scraper
+  dbeaver:
+    image: dbeaver/cloudbeaver:latest
+    container_name: leadgen-dbeaver
+    ports:
+      - "8978:8978"
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_NAME=leadgen
-      - DATABASE_USER=leadgen_user
-      - DATABASE_PASSWORD=leadgen_pass
-    volumes:
-      - ./config.yaml:/app/config.yaml
-      - ./exports:/app/exports
-      - ./logs:/app/logs
-    command: python main.py
+      CB_DB_URL: jdbc:postgresql://postgres:5432/leadgen
+      CB_DB_USER: postgres
+      CB_DB_PASSWORD: postgres
 
 volumes:
   postgres_data:

@@ -1,13 +1,18 @@
-playwright==1.41.0
-beautifulsoup4==4.12.3
-requests==2.31.0
-pandas==2.2.0
-openpyxl==3.1.2
-asyncpg==0.29.0
-pyyaml==6.0.1
-aiohttp==3.9.3
-lxml==5.1.0
-python-dateutil==2.8.2
-fake-useragent==1.4.0
-tenacity==8.2.3
-structlog==24.1.0
+# Lead Generation Scraper — Dependencies
+# Install: pip install -r requirements.txt
+
+# Environment / config
+python-dotenv
+
+# Data
+pandas
+openpyxl
+
+# Database
+sqlalchemy
+psycopg2-binary
+
+# Web scraping
+playwright
+beautifulsoup4
+requests
