@@ -10,10 +10,20 @@ Web sources → Crawler (Playwright + BS4) → Batch buffer → PostgreSQL → G
 ## Setup
 
 ### 1. Install dependencies
+
+Verify Playwright installed in.
+
+```bash
+python -c "from playwright.sync_api import sync_playwright; print('Playwright OK')"
+```
+Output: Playwright OK
+
 ```bash
 pip install -r requirements.txt
-playwright install chromium --with-deps
+
+python -m playwright install chromium --with-deps
 ```
+
 
 ### 2. Configure
 ```bash
