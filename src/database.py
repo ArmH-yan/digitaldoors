@@ -5,8 +5,9 @@ Simple synchronous PostgreSQL with SQLAlchemy + psycopg2.
 
 import os
 import pandas as pd
+import psycopg2
 from sqlalchemy import create_engine, text
-from datetime import datetime
+from datetime import datetime, timezone
 
 try:
     from dotenv import load_dotenv
@@ -28,6 +29,23 @@ def get_engine():
     return create_engine(url, echo=False, pool_pre_ping=True)
 
 
+def create_database_if_needed():
+    """Create the leadgen database if it doesn't exist."""
+    conn = psycopg2.connect(
+        host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASS, dbname="postgres"
+    )
+    conn.autocommit = True
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (DB_NAME,))
+    if not cur.fetchone():
+        cur.execute(f'CREATE DATABASE "{DB_NAME}"')
+        print(f"  [OK] Created database '{DB_NAME}'")
+    else:
+        print(f"  [OK] Database '{DB_NAME}' already exists")
+    cur.close()
+    conn.close()
+
+
 def run_sql_file(engine, filepath: str):
     with open(filepath, encoding="utf-8") as f:
         sql = f.read()
@@ -38,6 +56,7 @@ def run_sql_file(engine, filepath: str):
 
 
 def init_schema():
+    create_database_if_needed()
     engine = get_engine()
     run_sql_file(engine, f"{SQL_DIR}/01_schema.sql")
     print("  [OK] Schema initialized")
@@ -72,7 +91,7 @@ def upsert_company(engine, data: dict) -> int:
                     company_intelligence = COALESCE(:intelligence, company_intelligence),
                     last_seen = NOW()
                 WHERE id = :id
-            """, {
+            """), {
                 "id": company_id,
                 "website": data.get("website"),
                 "phone": data.get("phone"),

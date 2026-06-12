@@ -3,6 +3,8 @@ Lead Generation Scraper — Scoring
 Simple lead scoring based on company data.
 """
 
+import re
+
 
 SCORING_RULES = {
     "residential": 20,
@@ -27,26 +29,41 @@ def score_company(company: dict) -> dict:
     score = 0
     text = _get_analysis_text(company).lower()
 
-    if any(kw in text for kw in ["residential", "apartment", "housing", "բնակելի"]):
+    # Residential construction (English + Armenian)
+    if any(kw in text for kw in ["residential", "apartment", "housing", "բնակելի", "բdelays", "բnakdelays"]):
         score += SCORING_RULES["residential"]
 
-    if any(kw in text for kw in ["commercial", "office", "business", "retail"]):
+    # Commercial construction
+    if any(kw in text for kw in ["commercial", "office", "business", "retail", "առևտրային", "գdelays", "ofis"]):
         score += SCORING_RULES["commercial"]
 
-    if any(kw in text for kw in ["industrial", "factory", "manufacturing", "plant"]):
+    # Industrial construction
+    if any(kw in text for kw in ["industrial", "factory", "manufacturing", "plant", "արdelays", "գdelays"]):
         score += SCORING_RULES["industrial"]
 
-    if any(kw in text for kw in ["parking", "car park", "автостоянка"]):
+    # Mentions parking
+    if any(kw in text for kw in ["parking", "car park", "կdelays", "автостоянка"]):
         score += SCORING_RULES["parking"]
 
-    if any(kw in text for kw in ["garage", "гараж"]):
+    # Mentions garage
+    if any(kw in text for kw in ["garage", "гараж", "delays"]):
         score += SCORING_RULES["garage"]
 
-    if any(kw in text for kw in ["warehouse", "storage", "depot", "склад"]):
+    # Mentions warehouse
+    if any(kw in text for kw in ["warehouse", "storage", "depot", "склад", "պdelays"]):
         score += SCORING_RULES["warehouse"]
 
-    if any(kw in text for kw in ["logistics", "distribution", "supply chain"]):
+    # Mentions logistics
+    if any(kw in text for kw in ["logistics", "distribution", "supply chain", "логистика"]):
         score += SCORING_RULES["logistics"]
+
+    # Construction keywords (Armenian)
+    if any(kw in text for kw in ["շdelays", "կdelays", "նdelays", "շիdelays"]):
+        score += 10
+
+    # Developer keywords
+    if any(kw in text for kw in ["developer", "դelays", "կdelays"]):
+        score += 10
 
     if company.get("project_count", 0) > 3:
         score += SCORING_RULES["projects_bonus"]
@@ -133,7 +150,6 @@ def normalize_email(email: str) -> str:
     if not email:
         return ""
     email = email.strip().lower()
-    import re
     if re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
         return email
     return ""

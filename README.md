@@ -1,6 +1,6 @@
 # Lead Generation Scraper — Armenian Construction Companies
 
-Production-ready lead generation system for identifying construction companies in Armenia that purchase door systems (sectional garage doors, industrial doors, automatic gates, rolling shutters, loading dock systems).
+Automated lead generation system for identifying construction companies in Armenia that purchase door systems.
 
 ## Quick Start
 
@@ -10,18 +10,17 @@ Production-ready lead generation system for identifying construction companies i
 docker-compose up -d
 ```
 
-PostgreSQL runs on `localhost:5432`. DBeaver web UI on `http://localhost:8978`.
+PostgreSQL on `localhost:5432`. DBeaver web UI on `http://localhost:8978`.
 
 ### 2. Install dependencies
 
 ```bash
 pip install -r requirements.txt
-playwright install chromium
 ```
 
 ### 3. Configure
 
-Copy `.env.example` to `.env` and edit if needed:
+Copy `.env.example` to `.env`:
 
 ```
 DB_HOST=localhost
@@ -29,22 +28,38 @@ DB_PORT=5432
 DB_NAME=leadgen
 DB_USER=postgres
 DB_PASS=postgres
+MAX_WORKERS=5
+RUN_INTERVAL_HOURS=6
 ```
 
 ### 4. Run
 
 ```bash
+# Single run
 python main.py
+
+# Automated (runs every 6 hours)
+python main.py --schedule
 ```
+
+## How It Works
+
+1. **Multi-agent scraping** — 5 parallel sessions with different user agents
+2. **Crawl construction.am** — Find company listings
+3. **Scrape profiles** — Extract contact details in parallel
+4. **Enrich websites** — Visit company sites for projects/data
+5. **Score leads** — Rate 0-100 based on relevance
+6. **Store in PostgreSQL** — Dedup with upsert, track changes
+7. **Export** — CSV, XLSX, summary report
 
 ## Output
 
-Files are saved to `data/exports/`:
+Files saved to `data/exports/`:
 
-- `companies_*.csv` — All discovered companies
+- `companies_*.csv` — All companies
 - `qualified_leads_*.csv` — HOT and WARM leads
-- `qualified_leads_*.xlsx` — Formatted Excel export
-- `summary_report_*.txt` — Summary statistics
+- `qualified_leads_*.xlsx` — Formatted Excel
+- `summary_report_*.txt` — Statistics
 
 ## Lead Scoring
 
@@ -64,47 +79,44 @@ Files are saved to `data/exports/`:
 
 **Priority:** HOT (≥60) | WARM (≥30) | LOW (<30)
 
-## Project Structure
+## DBeaver
 
-```
-digitaldoors/
-├── src/
-│   ├── database.py    # PostgreSQL with SQLAlchemy
-│   ├── crawler.py     # construction.am scraper
-│   ├── scoring.py     # Lead scoring & normalization
-│   └── export.py      # CSV/XLSX export
-├── sql/
-│   └── schema/
-│       └── 01_schema.sql
-├── data/
-│   ├── raw/
-│   └── exports/
-├── main.py            # Pipeline entry point
-├── docker-compose.yml # PostgreSQL + DBeaver
-├── requirements.txt
-├── .env.example
-└── README.md
-```
+Access your data at `http://localhost:8978`:
 
-## Database
-
-Access via DBeaver web UI at `http://localhost:8978` or any PostgreSQL client.
-
-Connection:
 - Host: `localhost`
 - Port: `5432`
 - Database: `leadgen`
 - User: `postgres`
 - Password: `postgres`
 
-### Tables
+### Useful Queries
 
-- `companies` — Company data with lead scoring
-- `projects` — Detected construction projects
-- `contacts` — Contact information
-- `crawl_runs` — Crawl run metadata
+```sql
+-- All HOT leads
+SELECT * FROM v_qualified_leads WHERE lead_priority = 'HOT';
 
-### Views
+-- Summary stats
+SELECT * FROM v_lead_summary;
 
-- `v_qualified_leads` — Pre-filtered HOT/WARM leads
-- `v_lead_summary` — Aggregate statistics
+-- Companies by city
+SELECT city, COUNT(*) FROM companies GROUP BY city ORDER BY COUNT(*) DESC;
+```
+
+## Project Structure
+
+```
+digitaldoors/
+├── src/
+│   ├── database.py    # PostgreSQL (SQLAlchemy + psycopg2)
+│   ├── crawler.py     # Multi-agent parallel scraper
+│   ├── scoring.py     # Lead scoring
+│   └── export.py      # CSV/XLSX export
+├── sql/schema/
+│   └── 01_schema.sql
+├── data/exports/
+├── main.py            # Pipeline + scheduler
+├── docker-compose.yml # PostgreSQL + DBeaver
+├── requirements.txt
+├── .env.example
+└── README.md
+```

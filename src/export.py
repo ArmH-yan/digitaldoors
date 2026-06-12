@@ -6,7 +6,7 @@ CSV and XLSX export for leads.
 import os
 import csv
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 EXPORT_DIR = "data/exports"
@@ -19,7 +19,7 @@ def ensure_export_dir():
 def export_all_companies(companies: list[dict], timestamp: str = None) -> str:
     ensure_export_dir()
     if not timestamp:
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
     filepath = os.path.join(EXPORT_DIR, f"companies_{timestamp}.csv")
     columns = [
@@ -37,7 +37,7 @@ def export_all_companies(companies: list[dict], timestamp: str = None) -> str:
 def export_qualified_leads(companies: list[dict], timestamp: str = None) -> tuple[str, str]:
     ensure_export_dir()
     if not timestamp:
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
     qualified = [c for c in companies if c.get("lead_priority") in ("HOT", "WARM")]
 
@@ -62,7 +62,7 @@ def export_qualified_leads(companies: list[dict], timestamp: str = None) -> tupl
 def generate_summary_report(companies: list[dict], timestamp: str = None) -> str:
     ensure_export_dir()
     if not timestamp:
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
     total = len(companies)
     if total == 0:
@@ -83,7 +83,7 @@ def generate_summary_report(companies: list[dict], timestamp: str = None) -> str
     report = f"""
 ====================================================
 LEAD GENERATION SUMMARY REPORT
-Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
+Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC
 ====================================================
 
 OVERVIEW

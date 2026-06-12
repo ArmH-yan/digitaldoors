@@ -13,6 +13,5 @@ sqlalchemy
 psycopg2-binary
 
 # Web scraping
-playwright
-beautifulsoup4
 requests
+beautifulsoup4
