@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS companies (
     project_count     INTEGER DEFAULT 0,
     project_names     TEXT,
     lead_score        INTEGER DEFAULT 0,
-    lead_priority     VARCHAR(10) DEFAULT 'LOW',
+    lead_priority     VARCHAR(10) DEFAULT 'COLD',
     company_intelligence TEXT,
     synced_to_sheets  BOOLEAN DEFAULT FALSE,
     first_seen        TIMESTAMPTZ DEFAULT NOW(),
@@ -98,7 +98,7 @@ SELECT
     COUNT(*) FILTER (WHERE has_active_projects = TRUE) AS with_projects,
     COUNT(*) FILTER (WHERE lead_priority = 'HOT') AS hot_leads,
     COUNT(*) FILTER (WHERE lead_priority = 'WARM') AS warm_leads,
-    COUNT(*) FILTER (WHERE lead_priority = 'LOW') AS low_leads,
+    COUNT(*) FILTER (WHERE lead_priority = 'COLD') AS cold_leads,
     COUNT(*) FILTER (WHERE synced_to_sheets = TRUE) AS synced,
     ROUND(AVG(lead_score), 1) AS avg_score
 FROM companies;

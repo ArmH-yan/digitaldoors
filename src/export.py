@@ -77,7 +77,7 @@ def generate_summary_report(companies: list[dict], timestamp: str = None) -> str
     with_projects = sum(1 for c in companies if c.get("has_active_projects"))
     hot = sum(1 for c in companies if c.get("lead_priority") == "HOT")
     warm = sum(1 for c in companies if c.get("lead_priority") == "WARM")
-    low = sum(1 for c in companies if c.get("lead_priority") == "LOW")
+    low = sum(1 for c in companies if c.get("lead_priority") == "COLD")
     avg_score = sum(c.get("lead_score", 0) for c in companies) / total
 
     report = f"""
@@ -98,7 +98,7 @@ LEAD DISTRIBUTION
 -----------------
 HOT leads:                  {hot} ({hot/total*100:.1f}%)
 WARM leads:                 {warm} ({warm/total*100:.1f}%)
-LOW leads:                  {low} ({low/total*100:.1f}%)
+COLD leads:                  {low} ({low/total*100:.1f}%)
 
 Average lead score:         {avg_score:.1f}
 

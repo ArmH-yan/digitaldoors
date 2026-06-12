@@ -21,6 +21,9 @@ SCORING_RULES = {
 HOT_THRESHOLD = 60
 WARM_THRESHOLD = 30
 
+# Legacy alias
+COLD = "COLD"
+
 PROJECT_KEYWORDS_EN = [
     "construction", "residential complex", "apartment building",
     "new development", "project", "high-rise", "commercial center",
@@ -122,7 +125,7 @@ def score_company(company: dict) -> dict:
     elif score >= WARM_THRESHOLD:
         priority = "WARM"
     else:
-        priority = "LOW"
+        priority = "COLD"
 
     company["lead_score"] = score
     company["lead_priority"] = priority

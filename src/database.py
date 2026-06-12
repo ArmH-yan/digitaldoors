@@ -127,7 +127,7 @@ def upsert_company(engine, data: dict) -> int:
                 "project_count": data.get("project_count", 0),
                 "project_names": data.get("project_names"),
                 "score": data.get("lead_score", 0),
-                "priority": data.get("lead_priority", "LOW"),
+                "priority": data.get("lead_priority", "COLD"),
                 "intelligence": data.get("company_intelligence"),
             })
             conn.commit()
@@ -165,7 +165,7 @@ def upsert_company(engine, data: dict) -> int:
                 "project_count": data.get("project_count", 0),
                 "project_names": data.get("project_names"),
                 "score": data.get("lead_score", 0),
-                "priority": data.get("lead_priority", "LOW"),
+                "priority": data.get("lead_priority", "COLD"),
                 "intelligence": data.get("company_intelligence"),
             })
             conn.commit()

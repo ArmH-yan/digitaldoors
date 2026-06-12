@@ -11,8 +11,8 @@ Web sources → Crawler (Playwright + BS4) → Batch buffer → PostgreSQL → G
 
 ### 1. Install dependencies
 ```bash
-pip install requests beautifulsoup4 sqlalchemy psycopg2-binary playwright gspread google-auth openpyxl
-playwright install chromium
+pip install -r requirements.txt
+playwright install chromium --with-deps
 ```
 
 ### 2. Configure

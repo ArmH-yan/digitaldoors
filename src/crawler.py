@@ -124,8 +124,7 @@ def parse_construction_am_links(html: str, base_url: str) -> list[dict]:
         link = item.find("a", href=True)
         if link and "/companies/" in link["href"]:
             full_url = urljoin(base_url, link["href"])
-            name = item.get_text(strip=True).split("Դիտdelays")[0].strip()
-            name = re.sub(r'\d+$', '', name).strip()
+            name = item.get_text(strip=True)
             companies.append({"url": full_url, "name": name if name else None})
     return companies
 
