@@ -1,9 +1,10 @@
 """
-Lead Generation Scraper — Database Module
-Simple synchronous PostgreSQL with SQLAlchemy + psycopg2.
+Lead Generation v2 — Database Module
+PostgreSQL (temp) + Google Sheets (warehouse)
 """
 
 import os
+import hashlib
 import pandas as pd
 import psycopg2
 from sqlalchemy import create_engine, text
@@ -24,13 +25,17 @@ DB_PASS = os.getenv("DB_PASS", "postgres")
 SQL_DIR = "sql/schema"
 
 
+def compute_content_hash(name: str, phone: str, url: str) -> str:
+    raw = f"{name}|{phone}|{url}".encode("utf-8")
+    return hashlib.sha1(raw).hexdigest()
+
+
 def get_engine():
     url = f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     return create_engine(url, echo=False, pool_pre_ping=True)
 
 
 def create_database_if_needed():
-    """Create the leadgen database if it doesn't exist."""
     conn = psycopg2.connect(
         host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASS, dbname="postgres"
     )
@@ -58,16 +63,32 @@ def run_sql_file(engine, filepath: str):
 def init_schema():
     create_database_if_needed()
     engine = get_engine()
+    # Drop old tables to apply new schema
+    with engine.connect() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS contacts CASCADE"))
+        conn.execute(text("DROP TABLE IF EXISTS projects CASCADE"))
+        conn.execute(text("DROP TABLE IF EXISTS companies CASCADE"))
+        conn.execute(text("DROP TABLE IF EXISTS crawl_runs CASCADE"))
+        conn.execute(text("DROP VIEW IF EXISTS v_qualified_leads CASCADE"))
+        conn.execute(text("DROP VIEW IF EXISTS v_lead_summary CASCADE"))
+        conn.execute(text("DROP VIEW IF EXISTS v_unsynced CASCADE"))
+        conn.commit()
     run_sql_file(engine, f"{SQL_DIR}/01_schema.sql")
     print("  [OK] Schema initialized")
 
 
 def upsert_company(engine, data: dict) -> int:
-    """Insert or update company. Returns company ID."""
+    """Insert or update company by content_hash. Returns company ID."""
+    content_hash = data.get("content_hash") or compute_content_hash(
+        data.get("company_name", ""),
+        data.get("phone", ""),
+        data.get("source_url", "")
+    )
+
     with engine.connect() as conn:
         existing = conn.execute(
-            text("SELECT id FROM companies WHERE company_name = :name AND source_url = :source"),
-            {"name": data["company_name"], "source": data.get("source_url", "")}
+            text("SELECT id FROM companies WHERE content_hash = :hash"),
+            {"hash": content_hash}
         ).fetchone()
 
         if existing:
@@ -114,19 +135,20 @@ def upsert_company(engine, data: dict) -> int:
         else:
             result = conn.execute(text("""
                 INSERT INTO companies (
-                    company_name, website, phone, email, address, city,
+                    content_hash, company_name, website, phone, email, address, city,
                     company_category, company_description, services,
-                    contact_page_url, source_url, has_active_projects,
+                    contact_page_url, source_url, source_site, has_active_projects,
                     project_count, project_names, lead_score,
                     lead_priority, company_intelligence
                 ) VALUES (
-                    :name, :website, :phone, :email, :address, :city,
+                    :hash, :name, :website, :phone, :email, :address, :city,
                     :category, :description, :services,
-                    :contact_url, :source, :has_projects,
+                    :contact_url, :source, :source_site, :has_projects,
                     :project_count, :project_names, :score,
                     :priority, :intelligence
                 ) RETURNING id
             """), {
+                "hash": content_hash,
                 "name": data["company_name"],
                 "website": data.get("website"),
                 "phone": data.get("phone"),
@@ -138,6 +160,7 @@ def upsert_company(engine, data: dict) -> int:
                 "services": data.get("services"),
                 "contact_url": data.get("contact_page_url"),
                 "source": data.get("source_url", ""),
+                "source_site": data.get("source_site", ""),
                 "has_projects": data.get("has_active_projects", False),
                 "project_count": data.get("project_count", 0),
                 "project_names": data.get("project_names"),
@@ -167,6 +190,32 @@ def insert_contact(engine, company_id: int, contact_type: str, value: str, sourc
         conn.commit()
 
 
+def get_unsynced_companies(engine) -> pd.DataFrame:
+    return pd.read_sql("SELECT * FROM v_unsynced", engine)
+
+
+def mark_synced(engine, company_ids: list[int]):
+    if not company_ids:
+        return
+    with engine.connect() as conn:
+        conn.execute(
+            text("UPDATE companies SET synced_to_sheets = TRUE WHERE id = ANY(:ids)"),
+            {"ids": company_ids}
+        )
+        conn.commit()
+
+
+def purge_synced(engine):
+    """Remove synced companies from temp table."""
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("DELETE FROM companies WHERE synced_to_sheets = TRUE RETURNING id")
+        )
+        deleted = len(result.fetchall())
+        conn.commit()
+    return deleted
+
+
 def get_all_companies(engine) -> pd.DataFrame:
     return pd.read_sql("SELECT * FROM companies ORDER BY lead_score DESC", engine)
 
@@ -183,12 +232,6 @@ def get_summary(engine) -> dict:
         row = conn.execute(text("SELECT * FROM v_lead_summary")).fetchone()
         if row:
             cols = ["total_companies", "with_website", "with_email", "with_phone",
-                     "with_projects", "hot_leads", "warm_leads", "low_leads", "avg_score"]
+                     "with_projects", "hot_leads", "warm_leads", "low_leads", "synced", "avg_score"]
             return dict(zip(cols, row))
         return {}
-
-
-if __name__ == "__main__":
-    print("Initializing schema...")
-    init_schema()
-    print("Done.")

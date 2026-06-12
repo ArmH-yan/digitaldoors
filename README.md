@@ -1,122 +1,80 @@
-# Lead Generation Scraper — Armenian Construction Companies
+# Lead Generation Pipeline v2
 
-Automated lead generation system for identifying construction companies in Armenia that purchase door systems.
+Scraper for Armenian construction companies selling door systems.
 
-## Quick Start
+## Architecture
+```
+Web sources → Crawler (Playwright + BS4) → Batch buffer → PostgreSQL → Google Sheets → Purge
+```
 
-### 1. Start database
+## Setup
 
+### 1. Install dependencies
+```bash
+pip install requests beautifulsoup4 sqlalchemy psycopg2-binary playwright gspread google-auth openpyxl
+playwright install chromium
+```
+
+### 2. Configure
+```bash
+cp .env.example .env
+# Edit .env with your database credentials
+```
+
+### 3. Docker (PostgreSQL)
 ```bash
 docker-compose up -d
 ```
 
-PostgreSQL on `localhost:5432`. DBeaver web UI on `http://localhost:8978`.
+### 4. Google Sheets (optional)
 
-### 2. Install dependencies
+To enable Google Sheets sync:
 
-```bash
-pip install -r requirements.txt
-```
+1. Create a Google Cloud project
+2. Enable Google Sheets API
+3. Create a Service Account and download JSON key to `credentials/gsheets_key.json`
+4. Create a Google Sheet and copy its ID
+5. Add to `.env`:
+   ```
+   GOOGLE_SHEET_ID=your_sheet_id_here
+   GOOGLE_CREDS_FILE=credentials/gsheets_key.json
+   ```
 
-### 3. Configure
-
-Copy `.env.example` to `.env`:
-
-```
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=leadgen
-DB_USER=postgres
-DB_PASS=postgres
-MAX_WORKERS=5
-RUN_INTERVAL_HOURS=6
-```
-
-### 4. Run
+## Usage
 
 ```bash
-# Single run
+# All sources
 python main.py
 
-# Automated (runs every 6 hours)
+# Single source
+python main.py construction_am
+python main.py spyur_am
+
+# Multiple sources
+python main.py construction_am spyur_am
+
+# Scheduled runs (every 6 hours)
 python main.py --schedule
 ```
 
-## How It Works
+## Sources
 
-1. **Multi-agent scraping** — 5 parallel sessions with different user agents
-2. **Crawl construction.am** — Find company listings
-3. **Scrape profiles** — Extract contact details in parallel
-4. **Enrich websites** — Visit company sites for projects/data
-5. **Score leads** — Rate 0-100 based on relevance
-6. **Store in PostgreSQL** — Dedup with upsert, track changes
-7. **Export** — CSV, XLSX, summary report
+| Source | Type | Companies | Notes |
+|--------|------|-----------|-------|
+| construction.am | Static/BS4 | ~556 | Armenian letter pagination |
+| spyur.am | Static/BS4 | ~400 | Page pagination, 16 pages |
+| norakaruyc.am | Playwright | - | Angular SPA, needs JS |
 
-## Output
+## Scoring
 
-Files saved to `data/exports/`:
+| Priority | Score | Criteria |
+|----------|-------|----------|
+| HOT | 60+ | Multiple product-relevant keywords |
+| WARM | 30-59 | Some relevant keywords |
+| LOW | <30 | Basic match only |
 
-- `companies_*.csv` — All companies
-- `qualified_leads_*.csv` — HOT and WARM leads
-- `qualified_leads_*.xlsx` — Formatted Excel
-- `summary_report_*.txt` — Statistics
+## Exports
 
-## Lead Scoring
-
-| Factor | Points |
-|--------|--------|
-| Residential construction | +20 |
-| Commercial construction | +25 |
-| Industrial construction | +30 |
-| Mentions parking | +20 |
-| Mentions garage | +20 |
-| Mentions warehouse | +15 |
-| Mentions logistics | +15 |
-| More than 3 projects | +20 |
-| Has website | +5 |
-| Has email | +5 |
-| Has phone | +5 |
-
-**Priority:** HOT (≥60) | WARM (≥30) | LOW (<30)
-
-## DBeaver
-
-Access your data at `http://localhost:8978`:
-
-- Host: `localhost`
-- Port: `5432`
-- Database: `leadgen`
-- User: `postgres`
-- Password: `postgres`
-
-### Useful Queries
-
-```sql
--- All HOT leads
-SELECT * FROM v_qualified_leads WHERE lead_priority = 'HOT';
-
--- Summary stats
-SELECT * FROM v_lead_summary;
-
--- Companies by city
-SELECT city, COUNT(*) FROM companies GROUP BY city ORDER BY COUNT(*) DESC;
-```
-
-## Project Structure
-
-```
-digitaldoors/
-├── src/
-│   ├── database.py    # PostgreSQL (SQLAlchemy + psycopg2)
-│   ├── crawler.py     # Multi-agent parallel scraper
-│   ├── scoring.py     # Lead scoring
-│   └── export.py      # CSV/XLSX export
-├── sql/schema/
-│   └── 01_schema.sql
-├── data/exports/
-├── main.py            # Pipeline + scheduler
-├── docker-compose.yml # PostgreSQL + DBeaver
-├── requirements.txt
-├── .env.example
-└── README.md
-```
+- `data/exports/companies_*.csv` - All companies
+- `data/exports/qualified_leads_*.xlsx` - HOT + WARM leads
+- `data/exports/summary_report_*.txt` - Summary statistics

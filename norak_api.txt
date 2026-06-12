@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en" data-beasties-container>
+<head>
+  <meta charset="utf-8">
+  <title>Norakaruyc | Նորակառույց</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="description" content="Բոլոր նորակառույցները մեկ հարթակում | All new buildings on one website | Norakaruyc hamalirneri kentronacvac hartak">
+  <meta name="keywords" content="նորակառույց, norakaruyc, norakaruycner, norakaruyc bnakaran, norakaruyc bnakaranner, norakaruyc bnakaran karucapatoxic, նորակառույց բնակարաններ,նորակառույց բնակարաններ երեւանում,նորակառույց բնակարանների վաճառք, Bnakaran karucapatoxic , karucapatoxic,Կառուցապատողից, բնակարան կառուցապատողից, նորակառույցներ երևանում, նորակառույցներ հայաստանում, գնել բնակարան նորակառաույց շենքում, նորակառույց թաղամաս, նորակառույց առանձնատներ, ekamtahark, եկամտահարկ">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+
+  <!-- Resource hints for third-party domains -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="dns-prefetch" href="https://www.googletagmanager.com">
+  <link rel="dns-prefetch" href="https://www.google-analytics.com">
+  <link rel="dns-prefetch" href="https://connect.facebook.net">
+  <link rel="dns-prefetch" href="https://maps.googleapis.com">
+  <link rel="dns-prefetch" href="https://t.contentsquare.net">
+
+  <style>@font-face{font-family:'Material Icons';font-style:normal;font-weight:400;src:url(https://fonts.gstatic.com/s/materialicons/v145/flUhRq6tzZclQEJ-Vdg-IuiaDsNc.woff2) format('woff2');}.material-icons{font-family:'Material Icons';font-weight:normal;font-style:normal;font-size:24px;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;word-wrap:normal;direction:ltr;-webkit-font-feature-settings:'liga';-webkit-font-smoothing:antialiased;}</style>
+  <style>@font-face{font-family:'Material Icons Outlined';font-style:normal;font-weight:400;src:url(https://fonts.gstatic.com/s/materialiconsoutlined/v110/gok-H7zzDkdnRel8-DQ6KAXJ69wP1tGnf4ZGhUce.woff2) format('woff2');}.material-icons-outlined{font-family:'Material Icons Outlined';font-weight:normal;font-style:normal;font-size:24px;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;word-wrap:normal;direction:ltr;-webkit-font-feature-settings:'liga';-webkit-font-smoothing:antialiased;}</style>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#d7dee3">
+
+  <meta property="og:title" content="Բոլոր նորակառույցները մեկ հարթակում">
+  <meta property="og:description" content="Գտիր քեզ ամենահարմար բնակարանը">
+  <meta property="og:image" content="https://norakaruyc.am/thumbnail.jpg">
+  <meta property="og:url" content="https://norakaruyc.am/index.html">
+
+  <!-- Privacy meta tag -->
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+
+  <!-- Google Maps API - Keep this as it's needed for functionality -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyByULJ6YUjkS2bTd4xlIhNR5zy0EXzHZ4A" async defer crossorigin="anonymous"></script>
+
+  <!-- Tracking scripts with error handling and deferred loading -->
+  <script>
+    // Wait for DOM to be ready before loading tracking scripts
+    (function() {
+      function loadTrackingScripts() {
+        // Google Tag Manager with error handling
+        try {
+          (function (w, d, s, l, i) {
+            w[l] = w[l] || [];
+            w[l].push({
+              'gtm.start': new Date().getTime(),
+              event: 'gtm.js'
+            });
+            var f = d.getElementsByTagName(s)[0],
+              j = d.createElement(s),
+              dl = l != 'dataLayer' ? '&l=' + l : '';
+            j.async = true;
+            j.crossOrigin = 'anonymous';
+            j.src = 'https://www.googletagmanager.com/gtm.js?id=' + i + dl;
+            j.onerror = function() {
+              console.warn('GTM failed to load');
+            };
+            f.parentNode.insertBefore(j, f);
+          })(window, document, 'script', 'dataLayer', 'GTM-WRW3TF5M');
+        } catch(e) {
+          console.warn('GTM initialization error:', e);
+        }
+
+        // Google Analytics with error handling
+        try {
+          window.dataLayer = window.dataLayer || [];
+          function gtag() {
+            dataLayer.push(arguments);
+          }
+          gtag('js', new Date());
+          gtag('config', 'G-GHYW8ZS86N', {
+            'anonymize_ip': true,
+            'cookie_flags': 'SameSite=None;Secure'
+          });
+
+          var gaScript = document.createElement('script');
+          gaScript.async = true;
+          gaScript.crossOrigin = 'anonymous';
+          gaScript.src = 'https://www.googletagmanager.com/gtag/js?id=G-GHYW8ZS86N';
+          gaScript.onerror = function() {
+            console.warn('Google Analytics failed to load');
+          };
+          documen

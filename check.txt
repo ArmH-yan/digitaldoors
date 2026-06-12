@@ -1,0 +1,21 @@
+                                company_name                                                     website         phone email      source_site
+0   Ազգային Սոցիալական Բնակարանային Ասոցացիա                                          http://www.asba.am  +37495151719        construction.am
+1                                 Էլիտ Գրուպ                                    http://www.elitegroup.am  +37410566922        construction.am
+2                                    1ԷսՔյու  https://www.facebook.com/share/1Ci85UbLYS/?mibextid=wwXIfr  +37455603613        construction.am
+3                               Ակվա-Լեն Շին                         https://www.hydroenergoshin.info.am  +37411523814        construction.am
+4                          Բաղրամյան Բիլդինգ                          https://baghramyan-residence.am/hy  +37444501090        construction.am
+5                                 Առաննա Շին                                      https://arannashin.com  +37493020220        construction.am
+6                                      Բիդեք      https://www.facebook.com/profile.php?id=61552617995737  +37411575522        construction.am
+7                                  Ալիանս 64                                http://allianceinvestment.am  +37491416677        construction.am
+8                      ԱՊԵՔՍ Ջի էմ Դեվելոփեր                                          https://apex-gm.am  +37443002620        construction.am
+9                              Դ.Գ.Ա. Ռիելթի                                    http://www.dga-realty.am  +37410551845        construction.am
+10                          Գողթ Ուրբան Վալի                                     https://goghtvalley.com  +37433753377        construction.am
+11                                 Դեքոնսարթ                                                              +37455623720        construction.am
+12                           Բիլդինգ Կապիտալ                               http://www.buildingcapital.am  +37411220133        construction.am
+13                          Դի Ընդ Էյջ Գրուպ                                       http://www.dhgroup.am  +37460702020        construction.am
+14              Ակցեռն Անշարժ Գույքի Հոլդինգ                                        http://www.akcern.am  +37410277662        construction.am
+15                                      Դեկա                                          http://www.deka.am  +37444590101        construction.am
+16            Դալան Տեխնոպարկ Բիզնես Կենտրոն                                 https://dalantechnopark.com  +37498908908        construction.am
+17                    Դեֆանս Հաուզինգ Ինվեստ                                  https://defansehousing.com  +37495020020        construction.am
+18                              Եյ ՓԻ Ռիելթի                                      http://www.aprealty.am  +37441998833        construction.am
+19                                4 Էլեմենտս                                    https://www.4elements.am  +37498444486        construction.am

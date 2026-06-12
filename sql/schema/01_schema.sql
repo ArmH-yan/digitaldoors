@@ -1,11 +1,14 @@
 -- ===========================================================================
--- Lead Generation — PostgreSQL Schema
+-- Lead Generation v2 — PostgreSQL Schema
 -- ===========================================================================
+
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- 1. Core Tables -----------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS companies (
     id                SERIAL       PRIMARY KEY,
+    content_hash      VARCHAR(40)  UNIQUE NOT NULL,
     company_name      VARCHAR(500) NOT NULL,
     website           VARCHAR(500),
     phone             VARCHAR(100),
@@ -17,21 +20,25 @@ CREATE TABLE IF NOT EXISTS companies (
     services          TEXT,
     contact_page_url  VARCHAR(500),
     source_url        VARCHAR(500),
+    source_site       VARCHAR(100),
     has_active_projects BOOLEAN DEFAULT FALSE,
     project_count     INTEGER DEFAULT 0,
     project_names     TEXT,
     lead_score        INTEGER DEFAULT 0,
     lead_priority     VARCHAR(10) DEFAULT 'LOW',
     company_intelligence TEXT,
+    synced_to_sheets  BOOLEAN DEFAULT FALSE,
     first_seen        TIMESTAMPTZ DEFAULT NOW(),
     last_seen         TIMESTAMPTZ DEFAULT NOW(),
     created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
-COMMENT ON TABLE companies IS 'Discovered construction companies with lead scoring.';
+COMMENT ON TABLE companies IS 'Companies with content-hash dedup and lead scoring.';
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_name_source
-    ON companies (company_name, source_url);
+CREATE INDEX IF NOT EXISTS idx_companies_hash ON companies(content_hash);
+CREATE INDEX IF NOT EXISTS idx_companies_priority ON companies(lead_priority);
+CREATE INDEX IF NOT EXISTS idx_companies_score ON companies(lead_score);
+CREATE INDEX IF NOT EXISTS idx_companies_synced ON companies(synced_to_sheets);
 
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -44,8 +51,6 @@ CREATE TABLE IF NOT EXISTS projects (
     detected_at         TIMESTAMPTZ DEFAULT NOW()
 );
 
-COMMENT ON TABLE projects IS 'Detected construction projects per company.';
-
 
 CREATE TABLE IF NOT EXISTS contacts (
     id            SERIAL       PRIMARY KEY,
@@ -55,8 +60,6 @@ CREATE TABLE IF NOT EXISTS contacts (
     is_primary    BOOLEAN DEFAULT FALSE,
     source_url    VARCHAR(500)
 );
-
-COMMENT ON TABLE contacts IS 'Contact information per company.';
 
 
 CREATE TABLE IF NOT EXISTS crawl_runs (
@@ -70,19 +73,8 @@ CREATE TABLE IF NOT EXISTS crawl_runs (
     error_message      TEXT
 );
 
-COMMENT ON TABLE crawl_runs IS 'Crawl run metadata for tracking.';
 
-
--- 2. Indexes ----------------------------------------------------------------
-
-CREATE INDEX IF NOT EXISTS idx_companies_priority ON companies(lead_priority);
-CREATE INDEX IF NOT EXISTS idx_companies_score    ON companies(lead_score);
-CREATE INDEX IF NOT EXISTS idx_companies_city     ON companies(city);
-CREATE INDEX IF NOT EXISTS idx_projects_company   ON projects(company_id);
-CREATE INDEX IF NOT EXISTS idx_contacts_company   ON contacts(company_id);
-
-
--- 3. Views ------------------------------------------------------------------
+-- 2. Views ------------------------------------------------------------------
 
 CREATE OR REPLACE VIEW v_qualified_leads AS
 SELECT
@@ -96,8 +88,6 @@ WHERE c.lead_priority IN ('HOT', 'WARM')
 GROUP BY c.id
 ORDER BY c.lead_score DESC;
 
-COMMENT ON VIEW v_qualified_leads IS 'Pre-filtered HOT and WARM leads.';
-
 
 CREATE OR REPLACE VIEW v_lead_summary AS
 SELECT
@@ -109,7 +99,12 @@ SELECT
     COUNT(*) FILTER (WHERE lead_priority = 'HOT') AS hot_leads,
     COUNT(*) FILTER (WHERE lead_priority = 'WARM') AS warm_leads,
     COUNT(*) FILTER (WHERE lead_priority = 'LOW') AS low_leads,
+    COUNT(*) FILTER (WHERE synced_to_sheets = TRUE) AS synced,
     ROUND(AVG(lead_score), 1) AS avg_score
 FROM companies;
 
-COMMENT ON VIEW v_lead_summary IS 'Aggregate lead statistics.';
+
+CREATE OR REPLACE VIEW v_unsynced AS
+SELECT * FROM companies
+WHERE synced_to_sheets = FALSE
+ORDER BY lead_score DESC;
