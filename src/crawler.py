@@ -7,11 +7,14 @@ import time
 import random
 import re
 import hashlib
+import logging
 from urllib.parse import urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 import requests
 from playwright.sync_api import sync_playwright
+
+log = logging.getLogger("leadgen")
 
 try:
     from dotenv import load_dotenv
@@ -145,39 +148,149 @@ def parse_construction_am_profile(html: str, url: str) -> dict:
         if h1:
             data["company_name"] = h1.get_text(strip=True)
 
-    # Phone
+    # Phones - collect ALL
+    phones = []
     for a in soup.find_all("a", href=True):
         if a["href"].startswith("tel:"):
             phone = a["href"].replace("tel:", "").strip()
-            if phone and len(phone) > 5:
-                data["phone"] = phone
+            if phone and len(phone) > 5 and phone not in phones:
+                phones.append(phone)
+    if phones:
+        data["phone"] = phones[0]
+        if len(phones) > 1:
+            data["phone_secondary"] = ", ".join(phones[1:])
+
+    # Email - in data-original-title or data-content of popover button
+    email_btn = soup.find("a", attrs={"data-toggle": "popover"})
+    if email_btn:
+        for attr in ["data-original-title", "data-content", "title"]:
+            val = email_btn.get(attr, "").strip()
+            if "@" in val:
+                # data-content may contain HTML, extract email from it
+                match = re.search(r"[\w.+\-]+@[\w\-]+\.[\w.\-]+", val)
+                if match:
+                    data["email"] = match.group(0)
                 break
 
-    # Website from button
+    # Website - from button with text or any external link
+    websites = []
     for a in soup.find_all("a", href=True, class_="button"):
         href = a["href"]
         if href.startswith("http") and "construction.am" not in href:
-            data["website"] = href
-            break
-    if not data.get("website"):
-        skip = ["construction.am", "facebook", "instagram", "yandex", "mail.ru", "rambler", "google", "liveinternet"]
+            if href not in websites:
+                websites.append(href)
+    if not websites:
+        skip = ["construction.am", "facebook", "instagram", "yandex", "mail.ru",
+                "rambler", "google", "liveinternet", "linkedin"]
         for a in soup.find_all("a", href=True):
             href = a["href"]
             if href.startswith("http") and not any(d in href for d in skip):
-                data["website"] = href
+                if href not in websites:
+                    websites.append(href)
+    if websites:
+        data["website"] = websites[0]
+
+    # Address - from i.fa-map-signs, get text after the icon
+    address_icon = soup.find("i", class_=lambda c: c and "fa-map-signs" in c)
+    if address_icon:
+        # Get the parent div, then extract only the text nodes (skip icon text)
+        parent = address_icon.parent
+        if parent:
+            # Collect text from siblings of the <i> tag
+            parts = []
+            for sibling in address_icon.next_siblings:
+                text = sibling.string if sibling.string else sibling.get_text(strip=True)
+                if text:
+                    parts.append(text.strip())
+            addr_text = " ".join(parts).strip()
+            if addr_text:
+                data["address"] = addr_text
+
+    # City - from address or text
+    if data.get("address"):
+        parts = [p.strip() for p in data["address"].split(",")]
+        for part in parts:
+            lower = part.lower()
+            if part in ["Hayastan", "Haastan", "Armenia", "\u0540\u0561\u0575\u0561\u057d\u057f\u0561\u0576"]:
+                continue
+            if re.match(r"^\d+$", part):
+                continue
+            if "marz" in lower or "\u0574\u0561\u0580\u0566" in part or "\u0544\u0561\u0580\u0566" in part:
+                continue
+            # Strip "գ." prefix (means "city" in Armenian) - handles both ASCII and Armenian period
+            cleaned = re.sub(r"^[\u0563\u0533][\.\u002E\u2024]\s*", "", part)
+            if cleaned:
+                # Take only the city name (first word), not the street after it
+                # e.g. "Երևան Վերին Անտառային փող." -> "Երևան"
+                city_candidate = cleaned.split()[0] if cleaned.split() else cleaned
+                data["city"] = city_candidate
                 break
+    if not data.get("city"):
+        text = soup.get_text()
+        if "\u0535\u0580\u0565\u057e\u0561\u0576" in text or "Yerevan" in text:
+            data["city"] = "Yerevan"
+        elif "Gyumri" in text:
+            data["city"] = "Gyumri"
+
+    # Director - from i.fa-user-circle
+    director_icon = soup.find("i", class_=lambda c: c and "fa-user-circle" in c)
+    if director_icon:
+        span = director_icon.find_next_sibling("span")
+        if span:
+            data["director"] = span.get_text(strip=True)
+
+    # Founded year
+    for span in soup.find_all("span", class_="hidden-xs"):
+        if span.get_text(strip=True).startswith("\u0540\u056b\u0574\u0576\u0561\u0564\u057e\u0565\u056c \u0567"):
+            badge = span.find("span", class_="badge")
+            if badge:
+                try:
+                    data["founded_year"] = int(badge.get_text(strip=True))
+                except ValueError:
+                    pass
+
+    # GPS coordinates from script
+    scripts = soup.find_all("script")
+    for script in scripts:
+        text = script.get_text()
+        match = re.search(r"var\s+markers\s*=\s*\[.*?\[.*?,\s*([\d.]+),\s*([\d.]+)\]", text, re.DOTALL)
+        if match:
+            data["gps_lat"] = float(match.group(1))
+            data["gps_lon"] = float(match.group(2))
+            break
+
+    # Social media links - skip source site's own social pages
+    source_domain = "construction.am"
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if "facebook.com" in href and "adrotators" not in href and "ad_click" not in href:
+            if source_domain not in href and not data.get("facebook_url"):
+                data["facebook_url"] = href
+            elif "adrotators" in href or "ad_click" in href:
+                import urllib.parse
+                parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+                real_url = parsed.get("ad_url", [None])[0]
+                if real_url and "facebook.com" in real_url and source_domain not in real_url and not data.get("facebook_url"):
+                    data["facebook_url"] = real_url
+        elif "instagram.com" in href and source_domain not in href and not data.get("instagram_url"):
+            if "adrotators" not in href:
+                data["instagram_url"] = href
+        elif "linkedin.com" in href and source_domain not in href and not data.get("linkedin_url"):
+            data["linkedin_url"] = href
 
     # Description
     meta = soup.find("meta", attrs={"name": "description"})
     if meta:
         data["company_description"] = meta.get("content", "")
 
-    # City
-    text = soup.get_text()
-    if "Yerevan" in text or "Երևdelays" in text:
-        data["city"] = "Yerevan"
-    elif "Gyumri" in text:
-        data["city"] = "Gyumri"
+    # Services - from structured list
+    services = []
+    for li in soup.select("div[style*='text-align:justify'] ul li"):
+        text = li.get_text(strip=True)
+        if text and len(text) < 200:
+            services.append(text)
+    if services:
+        data["services"] = ", ".join(services)
 
     return data
 
@@ -246,49 +359,170 @@ def parse_spyur_am_profile(html: str, url: str) -> dict:
     soup = BeautifulSoup(html, "html.parser")
     data = {"source_url": url, "source_site": "spyur.am"}
 
-    h1 = soup.find("h1")
+    # Name
+    h1 = soup.select_one(".right_col h1.page_title")
+    if not h1:
+        h1 = soup.find("h1")
     if h1:
         data["company_name"] = h1.get_text(strip=True)
 
-    for a in soup.find_all("a", href=True):
-        if a["href"].startswith("tel:"):
-            phone = a["href"].replace("tel:", "").strip()
-            if phone and len(phone) > 5:
-                data["phone"] = phone
-                break
+    # Director
+    lead_info = soup.select_one(".lead_block .lead_info")
+    if lead_info:
+        data["director"] = lead_info.get_text(strip=True)
 
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if href.startswith("http") and "spyur" not in href and "facebook" not in href:
-            data["website"] = href
+    # Phones - from first branch
+    phones = []
+    for a in soup.select(".branch_block .phone_info a.call[href^='tel:']"):
+        phone = a["href"].replace("tel:", "").strip()
+        if phone and phone not in phones:
+            phones.append(phone)
+    if phones:
+        data["phone"] = phones[0]
+
+    # Address - from first branch (HQ)
+    address_block = soup.select_one(".branch_block .address_block")
+    if address_block:
+        addr_text = address_block.get_text(separator=", ", strip=True)
+        if addr_text:
+            data["address"] = addr_text
+
+    # City - extract from address
+    if data.get("address"):
+        parts = [p.strip() for p in data["address"].split(",")]
+        for part in parts:
+            lower = part.lower()
+            if part in ["Hayastan", "Armenia", "\u0540\u0561\u0575\u0561\u057d\u057f\u0561\u0576"]:
+                continue
+            if re.match(r"^\d+$", part):
+                continue
+            # \u0577\u0580\u057b = shrj (marz in Armenian), \u0574\u0561\u0580\u0566 = marz in Armenian
+            if "marz" in lower or "\u0577\u0580\u057b" in part or "\u0574\u0561\u0580\u0566" in part or "\u0544\u0561\u0580\u0566" in part:
+                continue
+            data["city"] = part
             break
 
+    # District
+    district_block = soup.select_one(".branch_block .destriction_block")
+    if district_block:
+        dist_text = district_block.get_text(strip=True).strip("()")
+        if dist_text:
+            data["district"] = dist_text
+
+    # Website
+    skip_host = ["spyur", "facebook", "instagram", "linkedin"]
+    websites = []
+    for a in soup.select(".contact_subblock a.web_link[href^='http']"):
+        href = a["href"]
+        if not any(s in href.lower() for s in skip_host):
+            if href not in websites:
+                websites.append(href)
+    if websites:
+        data["website"] = websites[0]
+
+    # Work hours
+    work_hours = soup.select_one(".branch_block .work_hours")
+    if work_hours:
+        data["work_hours"] = work_hours.get_text(strip=True)
+
+    # GPS coordinates
+    map_canvas = soup.select_one("#map_canvas")
+    if map_canvas:
+        lat = map_canvas.get("lat")
+        lon = map_canvas.get("lon")
+        if lat and lon:
+            try:
+                data["gps_lat"] = float(lat)
+                data["gps_lon"] = float(lon)
+            except ValueError:
+                pass
+
+    # Other info - founding year, employee count, ownership
+    for li in soup.select(".other_info .info_list li"):
+        subtitle = li.select_one(".inner_subtitle")
+        text_block = li.select_one(".text_block")
+        if subtitle and text_block:
+            label = subtitle.get_text(strip=True).lower()
+            value = text_block.get_text(strip=True)
+            # \u0570\u056b\u0574\u0576\u0561\u0564\u0580\u0574\u0561\u0576 = "հիմնադրման"
+            if "\u0570\u056b\u0574\u0576\u0561\u0564\u0580\u0574\u0561\u0576" in label:
+                try:
+                    data["founded_year"] = int(value)
+                except ValueError:
+                    pass
+            # \u0561\u0577\u056d\u0561\u057f\u0578\u0572\u0576\u0565\u0580\u056b = "աշխատողների"
+            elif "\u0561\u0577\u056d\u0561\u057f\u0578\u0572\u0576\u0565\u0580\u056b" in label:
+                data["employee_count"] = value
+            # \u057d\u0565\u0583\u0561\u056f\u0561\u0576\u0578\u0582\u0569\u0575\u0561\u0576 = "սepakanut'yan"
+            elif "\u057d\u0565\u0583\u0561\u056f\u0561\u0576\u0578\u0582\u0569\u0575\u0561\u0576" in label:
+                data["ownership_type"] = value
+
+    # Social links
+    for a in soup.select(".contact_subblock a"):
+        href = a.get("href", "")
+        classes = a.get("class", [])
+        if "facebook" in href.lower() or "facebook_link" in classes:
+            if not data.get("facebook_url"):
+                data["facebook_url"] = href
+        elif "instagram" in href.lower() or "instagram_link" in classes:
+            if not data.get("instagram_url"):
+                data["instagram_url"] = href
+        elif "linkedin" in href.lower():
+            if not data.get("linkedin_url"):
+                data["linkedin_url"] = href
+
+    # Description - from meta or business activity section
     meta = soup.find("meta", attrs={"name": "description"})
     if meta:
         data["company_description"] = meta.get("content", "")
+    if not data.get("company_description"):
+        activity = soup.select_one(".details_info .info_section:first-child .info_content .text_block")
+        if activity:
+            data["company_description"] = activity.get_text(strip=True)[:1000]
 
-    text = soup.get_text()
-    if "\u0535\u0580\u0565\u057e\u0561\u0576" in text or "Yerevan" in text:
-        data["city"] = "Yerevan"
-    elif "Gyumri" in text:
-        data["city"] = "Gyumri"
+    # Services - from multilevel list
+    services = []
+    for a in soup.select(".info_content .multilevel_list a[href*='business_directory']"):
+        text = a.get_text(strip=True)
+        if text and len(text) < 200:
+            services.append(text)
+    if services:
+        data["services"] = ", ".join(services[:20])
 
     return data
 
 
 def crawl_company_website(agent: ScrapingAgent, website_url: str) -> dict:
-    result = {"projects": [], "all_text": []}
+    result = {"projects": [], "all_text": [], "emails": set(), "phones": set()}
     for path in ["/", "/about", "/projects", "/contact"]:
         url = urljoin(website_url, path)
         html = agent.fetch(url, retries=1)
         if html:
             soup = BeautifulSoup(html, "html.parser")
+            for a in soup.find_all("a", href=True):
+                if a["href"].startswith("mailto:"):
+                    email = a["href"].replace("mailto:", "").split("?")[0].strip()
+                    if email and re.match(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$", email):
+                        result["emails"].add(email)
+                elif a["href"].startswith("tel:"):
+                    phone = a["href"].replace("tel:", "").strip()
+                    if phone and len(phone) > 5:
+                        result["phones"].add(phone)
+            body_emails = re.findall(r'[\w.+\-]+@[\w\-]+\.[\w.\-]+', html)
+            for e in body_emails:
+                clean = e.strip(".")
+                if len(clean) > 5 and not clean.endswith((".png", ".jpg", ".gif", ".js", ".css")):
+                    result["emails"].add(clean)
             for elem in soup(["script", "style"]):
                 elem.decompose()
             text = soup.get_text(separator=" ", strip=True)[:2000]
             result["all_text"].append(text)
         time.sleep(0.2)
     result["full_text"] = " ".join(result["all_text"])
+    if result["emails"]:
+        result["email"] = next(iter(result["emails"]))
+    if result["phones"]:
+        result["phone"] = next(iter(result["phones"]))
     return result
 
 
@@ -313,6 +547,12 @@ def _enrich_company(args: tuple) -> dict:
         web_data = crawl_company_website(agent, website)
         if web_data.get("full_text"):
             company["_all_text"] = web_data["full_text"]
+        if not company.get("email") and web_data.get("email"):
+            company["email"] = web_data["email"]
+        if not company.get("phone") and web_data.get("phone"):
+            company["phone"] = web_data["phone"]
+        if not company.get("website") and web_data.get("website"):
+            company["website"] = web_data["website"]
     return company
 
 
@@ -323,12 +563,12 @@ def run_source(source_key: str, source_config: dict, agents: list[ScrapingAgent]
     is_js = source_config["type"] == "js"
     use_letters = source_config.get("letter_pagination", False)
 
-    print(f"\n  Source: {source_key} ({source_config['type']})")
+    log.info(f"  Source: {source_key} ({source_config['type']})")
     all_links = []
 
     if is_js:
         # Use Playwright for JS-rendered pages
-        print(f"    Using Playwright for {source_key}...")
+        log.info(f"    Using Playwright for {source_key}...")
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(user_agent=random.choice(USER_AGENTS))
@@ -342,9 +582,9 @@ def run_source(source_key: str, source_config: dict, agents: list[ScrapingAgent]
                     html = page.content()
                     companies = parse_norakaruyc_links(html, base_url)
                     all_links.extend(companies)
-                    print(f"    {listing_page}: Found {len(companies)} companies")
+                    log.info(f"    {listing_page}: Found {len(companies)} companies")
                 except Exception as e:
-                    print(f"    Error on {listing_page}: {e}")
+                    log.error(f"    Error on {listing_page}: {e}")
                 time.sleep(SCRAPE_DELAY)
 
             browser.close()
@@ -363,18 +603,18 @@ def run_source(source_key: str, source_config: dict, agents: list[ScrapingAgent]
             if not companies:
                 break
             all_links.extend(companies)
-            print(f"      Page {page_num}: Found {len(companies)} companies")
+            log.info(f"      Page {page_num}: Found {len(companies)} companies")
             page_num += 1
             time.sleep(SCRAPE_DELAY)
     else:
         # Use requests for static pages
         for listing_page in listing_pages:
-            print(f"    {listing_page}")
+            log.info(f"    {listing_page}")
             html = agents[0].fetch(base_url + listing_page)
             if html:
                 companies = parse_construction_am_links(html, base_url)
                 all_links.extend(companies)
-                print(f"      Page 1: Found {len(companies)} companies")
+                log.info(f"      Page 1: Found {len(companies)} companies")
 
             if use_letters:
                 letters = [
@@ -394,7 +634,7 @@ def run_source(source_key: str, source_config: dict, agents: list[ScrapingAgent]
                         companies = parse_construction_am_links(html, base_url)
                         all_links.extend(companies)
                         if companies:
-                            print(f"      Letter {i + 1}: Found {len(companies)} companies")
+                            log.info(f"      Letter {i + 1}: Found {len(companies)} companies")
                     time.sleep(SCRAPE_DELAY)
 
     # Deduplicate links
@@ -405,7 +645,10 @@ def run_source(source_key: str, source_config: dict, agents: list[ScrapingAgent]
             seen.add(l["url"])
             unique.append(l)
 
-    print(f"    Total unique links: {len(unique)}")
+    log.info(f"    Total unique links: {len(unique)}")
+
+    if not unique:
+        return []
 
     # Crawl profiles
     if is_js:
@@ -430,13 +673,14 @@ def run_source(source_key: str, source_config: dict, agents: list[ScrapingAgent]
                 )
                 companies.append(result)
             if i % 20 == 0 or i == len(futures):
-                print(f"      Profiles: {i}/{len(futures)}")
+                log.info(f"      Profiles: {i}/{len(futures)}")
 
     # Enrich
-    enrich_args = [(company, agents[i % len(agents)]) for i, company in enumerate(companies)]
-    with ThreadPoolExecutor(max_workers=min(len(agents), len(companies))) as executor:
-        futures = [executor.submit(_enrich_company, args) for args in enrich_args]
-        companies = [f.result() for f in as_completed(futures)]
+    if companies:
+        enrich_args = [(company, agents[i % len(agents)]) for i, company in enumerate(companies)]
+        with ThreadPoolExecutor(max_workers=min(len(agents), len(companies))) as executor:
+            futures = [executor.submit(_enrich_company, args) for args in enrich_args]
+            companies = [f.result() for f in as_completed(futures)]
 
     # Add to batch buffer
     flushed = 0
@@ -456,13 +700,13 @@ def run_crawler(num_agents: int = MAX_WORKERS, sources: list[str] = None) -> tup
     if sources is None:
         sources = list(SOURCES.keys())
 
-    print(f"  Created {num_agents} scraping agents")
-    print(f"  Sources: {', '.join(sources)}")
+    log.info(f"  Created {num_agents} scraping agents")
+    log.info(f"  Sources: {', '.join(sources)}")
 
     all_companies = []
     for source_key in sources:
         if source_key not in SOURCES:
-            print(f"  Unknown source: {source_key}")
+            log.warning(f"  Unknown source: {source_key}")
             continue
         companies = run_source(source_key, SOURCES[source_key], agents, buffer)
         all_companies.extend(companies)
@@ -470,9 +714,9 @@ def run_crawler(num_agents: int = MAX_WORKERS, sources: list[str] = None) -> tup
     # Final flush
     remaining = buffer.flush()
     if remaining:
-        print(f"\n  Final flush: {len(remaining)} rows")
+        log.info(f"  Final flush: {len(remaining)} rows")
 
     total_requests = sum(a.requests_made for a in agents)
-    print(f"\n  Total: {len(all_companies)} companies, {total_requests} requests")
+    log.info(f"  Total: {len(all_companies)} companies, {total_requests} requests")
 
     return all_companies, buffer

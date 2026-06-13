@@ -5,10 +5,13 @@ PostgreSQL (temp) + Google Sheets (warehouse)
 
 import os
 import hashlib
+import logging
 import pandas as pd
 import psycopg2
 from sqlalchemy import create_engine, text
 from datetime import datetime, timezone
+
+log = logging.getLogger("leadgen")
 
 try:
     from dotenv import load_dotenv
@@ -44,9 +47,9 @@ def create_database_if_needed():
     cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (DB_NAME,))
     if not cur.fetchone():
         cur.execute(f'CREATE DATABASE "{DB_NAME}"')
-        print(f"  [OK] Created database '{DB_NAME}'")
+        log.info(f"  [OK] Created database '{DB_NAME}'")
     else:
-        print(f"  [OK] Database '{DB_NAME}' already exists")
+        log.info(f"  [OK] Database '{DB_NAME}' already exists")
     cur.close()
     conn.close()
 
@@ -57,7 +60,7 @@ def run_sql_file(engine, filepath: str):
     with engine.connect() as conn:
         conn.execute(text(sql))
         conn.commit()
-    print(f"  [OK] Executed {filepath}")
+    log.info(f"  [OK] Executed {filepath}")
 
 
 def init_schema():
@@ -74,7 +77,7 @@ def init_schema():
         conn.execute(text("DROP VIEW IF EXISTS v_unsynced CASCADE"))
         conn.commit()
     run_sql_file(engine, f"{SQL_DIR}/01_schema.sql")
-    print("  [OK] Schema initialized")
+    log.info("  [OK] Schema initialized")
 
 
 def upsert_company(engine, data: dict) -> int:
@@ -100,10 +103,20 @@ def upsert_company(engine, data: dict) -> int:
                     email = COALESCE(:email, email),
                     address = COALESCE(:address, address),
                     city = COALESCE(:city, city),
+                    district = COALESCE(:district, district),
                     company_category = COALESCE(:category, company_category),
                     company_description = COALESCE(:description, company_description),
                     services = COALESCE(:services, services),
                     contact_page_url = COALESCE(:contact_url, contact_page_url),
+                    director = COALESCE(:director, director),
+                    founded_year = COALESCE(:founded_year, founded_year),
+                    employee_count = COALESCE(:employee_count, employee_count),
+                    ownership_type = COALESCE(:ownership_type, ownership_type),
+                    gps_lat = COALESCE(:gps_lat, gps_lat),
+                    gps_lon = COALESCE(:gps_lon, gps_lon),
+                    facebook_url = COALESCE(:facebook_url, facebook_url),
+                    instagram_url = COALESCE(:instagram_url, instagram_url),
+                    linkedin_url = COALESCE(:linkedin_url, linkedin_url),
                     has_active_projects = :has_projects,
                     project_count = :project_count,
                     project_names = COALESCE(:project_names, project_names),
@@ -119,10 +132,20 @@ def upsert_company(engine, data: dict) -> int:
                 "email": data.get("email"),
                 "address": data.get("address"),
                 "city": data.get("city"),
+                "district": data.get("district"),
                 "category": data.get("company_category"),
                 "description": data.get("company_description"),
                 "services": data.get("services"),
                 "contact_url": data.get("contact_page_url"),
+                "director": data.get("director"),
+                "founded_year": data.get("founded_year"),
+                "employee_count": data.get("employee_count"),
+                "ownership_type": data.get("ownership_type"),
+                "gps_lat": data.get("gps_lat"),
+                "gps_lon": data.get("gps_lon"),
+                "facebook_url": data.get("facebook_url"),
+                "instagram_url": data.get("instagram_url"),
+                "linkedin_url": data.get("linkedin_url"),
                 "has_projects": data.get("has_active_projects", False),
                 "project_count": data.get("project_count", 0),
                 "project_names": data.get("project_names"),
@@ -136,16 +159,20 @@ def upsert_company(engine, data: dict) -> int:
             result = conn.execute(text("""
                 INSERT INTO companies (
                     content_hash, company_name, website, phone, email, address, city,
-                    company_category, company_description, services,
-                    contact_page_url, source_url, source_site, has_active_projects,
-                    project_count, project_names, lead_score,
-                    lead_priority, company_intelligence
+                    district, company_category, company_description, services,
+                    contact_page_url, source_url, source_site,
+                    director, founded_year, employee_count, ownership_type,
+                    gps_lat, gps_lon, facebook_url, instagram_url, linkedin_url,
+                    has_active_projects, project_count, project_names,
+                    lead_score, lead_priority, company_intelligence
                 ) VALUES (
                     :hash, :name, :website, :phone, :email, :address, :city,
-                    :category, :description, :services,
-                    :contact_url, :source, :source_site, :has_projects,
-                    :project_count, :project_names, :score,
-                    :priority, :intelligence
+                    :district, :category, :description, :services,
+                    :contact_url, :source, :source_site,
+                    :director, :founded_year, :employee_count, :ownership_type,
+                    :gps_lat, :gps_lon, :facebook_url, :instagram_url, :linkedin_url,
+                    :has_projects, :project_count, :project_names,
+                    :score, :priority, :intelligence
                 ) RETURNING id
             """), {
                 "hash": content_hash,
@@ -155,12 +182,22 @@ def upsert_company(engine, data: dict) -> int:
                 "email": data.get("email"),
                 "address": data.get("address"),
                 "city": data.get("city"),
+                "district": data.get("district"),
                 "category": data.get("company_category"),
                 "description": data.get("company_description"),
                 "services": data.get("services"),
                 "contact_url": data.get("contact_page_url"),
                 "source": data.get("source_url", ""),
                 "source_site": data.get("source_site", ""),
+                "director": data.get("director"),
+                "founded_year": data.get("founded_year"),
+                "employee_count": data.get("employee_count"),
+                "ownership_type": data.get("ownership_type"),
+                "gps_lat": data.get("gps_lat"),
+                "gps_lon": data.get("gps_lon"),
+                "facebook_url": data.get("facebook_url"),
+                "instagram_url": data.get("instagram_url"),
+                "linkedin_url": data.get("linkedin_url"),
                 "has_projects": data.get("has_active_projects", False),
                 "project_count": data.get("project_count", 0),
                 "project_names": data.get("project_names"),
@@ -232,6 +269,6 @@ def get_summary(engine) -> dict:
         row = conn.execute(text("SELECT * FROM v_lead_summary")).fetchone()
         if row:
             cols = ["total_companies", "with_website", "with_email", "with_phone",
-                     "with_projects", "hot_leads", "warm_leads", "low_leads", "synced", "avg_score"]
+                     "with_projects", "hot_leads", "warm_leads", "cold_leads", "synced", "avg_score"]
             return dict(zip(cols, row))
         return {}

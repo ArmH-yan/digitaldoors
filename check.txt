@@ -1,3 +1,31 @@
-Empty DataFrame
-Columns: [company_name, source_site]
-Index: []
+                                          company_name email  city address      source_site lead_priority
+0                                              1ԷսՔյու        None    None  construction.am          WARM
+1                                         Ակվա-Լեն Շին        None    None  construction.am          WARM
+2                                      Բիլդինգ Կապիտալ        None    None  construction.am          WARM
+3                Էս Թի Սերվիս Շինարարական Ընկերություն        None    None  construction.am          WARM
+4                                            Կոորդինատ        None    None  construction.am          WARM
+5                             Համեդիլ Կոնստրաքշն Գրուպ        None    None  construction.am          WARM
+6                      ՀԱԷԿ-ի Շինարարություն (ՀԱԷԿՇԻՆ)        None    None  construction.am          WARM
+7                                              Ազուրիտ        None    None  construction.am          WARM
+8                                           Հորիզոն-95        None    None  construction.am          WARM
+9                                      Ռ․Գ․ Քոնսթրաքշն        None    None  construction.am          WARM
+10                                           Խիմմաստեր        None    None  construction.am          WARM
+11                                     Ռենկո ԱրմԷստեյտ        None    None  construction.am          WARM
+12                                           Պրոեկտում        None    None  construction.am          WARM
+13                                         Սահակյանշին        None    None  construction.am          WARM
+14                             Վահագնի Բնակելի Թաղամաս        None    None  construction.am          WARM
+15                     ԱԱԲ Քոնսթրաքշն (ԱԱԲ Պրոեկտ ՍՊԸ)        None    None  construction.am          WARM
+16                                           Վայքի ՃՇՇ        None    None  construction.am          WARM
+17                                          4 Էլեմենտս        None    None  construction.am          WARM
+18                                        Մալխասյանշին        None    None  construction.am          WARM
+19                                        Բաղրամյանշին        None    None  construction.am          WARM
+20                         Բալեքս Բետոնի Արտադրություն        None    None  construction.am          WARM
+21                      Գազպրոմ Արմենիա (Տրանսգազ ՍՊԸ)        None    None  construction.am          WARM
+22                                           Բարդի-Էկո        None    None  construction.am          WARM
+23  ԳԱՍ Շենքերի ու Կառույցների Տեխնիկական Հսկողություն        None    None  construction.am          WARM
+24                                            Եվրոթերմ        None    None  construction.am          WARM
+25                                           Եվրոստրոյ        None    None  construction.am          WARM
+26                 Զեթ-Պրոֆիլ Շինարարական Ընկերություն        None    None  construction.am          WARM
+27                                     Զովեր Քնսթրաքշն        None    None  construction.am          WARM
+28                        Զաքարյան Քոնսթրաքշն Սոլուշնս        None    None  construction.am          WARM
+29                                 ԷլեկտրաՍեվԿավՄոնտաժ        None    None  construction.am          WARM

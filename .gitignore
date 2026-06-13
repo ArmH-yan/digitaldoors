@@ -22,6 +22,9 @@ exports/
 .env
 .env.local
 
+# Credentials
+credentials/
+
 # IDE
 .vscode/
 .idea/
