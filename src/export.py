@@ -152,7 +152,7 @@ def _write_xlsx(filepath: str, data: list[dict], columns: list[str]):
         "ownership_type": "Ownership",
         "gps_lat": "Latitude", "gps_lon": "Longitude",
         "facebook_url": "Facebook", "instagram_url": "Instagram", "linkedin_url": "LinkedIn",
-        "company_category": "Category", "services": "Services",
+        "company_category": "Ecosystem Category", "services": "Services",
         "lead_score": "Score", "lead_priority": "Priority",
         "project_count": "Projects", "project_names": "Project Names",
         "company_intelligence": "Intelligence",

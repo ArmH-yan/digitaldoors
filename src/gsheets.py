@@ -31,9 +31,9 @@ HEADERS = [
     "district", "director", "founded_year", "employee_count", "ownership_type",
     "gps_lat", "gps_lon",
     "facebook_url", "instagram_url", "linkedin_url",
-    "company_category", "services", "lead_score", "lead_priority",
+    "services", "lead_score", "lead_priority",
     "project_count", "has_active_projects", "project_names", "company_intelligence",
-    "source_site", "source_url", "first_seen", "last_seen"
+    "company_category", "source_site", "source_url", "first_seen", "last_seen"
 ]
 
 DISPLAY_HEADERS = [
@@ -41,9 +41,9 @@ DISPLAY_HEADERS = [
     "District", "Director", "Founded Year", "Employees", "Ownership",
     "Latitude", "Longitude",
     "Facebook", "Instagram", "LinkedIn",
-    "Category", "Services", "Score", "Priority",
+    "Services", "Score", "Priority",
     "Project Count", "Has Active Projects", "Project Names", "Intelligence",
-    "Source", "Source URL", "First Seen", "Last Seen"
+    "Ecosystem Category", "Source", "Source URL", "First Seen", "Last Seen"
 ]
 
 

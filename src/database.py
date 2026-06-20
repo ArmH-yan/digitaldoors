@@ -227,6 +227,12 @@ def insert_contact(engine, company_id: int, contact_type: str, value: str, sourc
         conn.commit()
 
 
+def insert_named_contact(engine, company_id: int, name: str, title: str, source: str = None):
+    """Insert a named individual contact (e.g. an architect) linked to a company."""
+    value = f"{name} ({title})" if title else name
+    insert_contact(engine, company_id, "named_contact", value, source)
+
+
 def get_unsynced_companies(engine) -> pd.DataFrame:
     return pd.read_sql("SELECT * FROM v_unsynced", engine)
 

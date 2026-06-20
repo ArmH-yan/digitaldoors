@@ -24,6 +24,12 @@ WARM_THRESHOLD = 30
 # Legacy alias
 COLD = "COLD"
 
+DEFANSE_ECOSYSTEM_ROLES = {
+    "developer": "Major district developer \u2014 likely buyer of access control, gates, barriers.",
+    "construction": "Active contractor \u2014 potential buyer of sectional/industrial doors.",
+    "architecture": "Design firm \u2014 early-stage influence on door/gate specifications.",
+}
+
 PROJECT_KEYWORDS_EN = [
     "construction", "residential complex", "apartment building",
     "new development", "project", "high-rise", "commercial center",
@@ -31,6 +37,9 @@ PROJECT_KEYWORDS_EN = [
     "parking", "underground parking", "garage", "cold storage",
     "refrigeration", "storage facility", "distribution center",
     "developer", "real estate",
+    "architect", "architectural design", "zoning", "project developer",
+    "construction partner", "engineering firm", "designer",
+    "urban development", "district planning",
 ]
 
 # Armenian keywords as Unicode escapes to avoid encoding issues
@@ -167,6 +176,10 @@ def generate_intelligence(company: dict) -> str:
         summary += " Good candidate for door and gate systems."
     else:
         summary += " May be interested in basic door systems."
+
+    role = DEFANSE_ECOSYSTEM_ROLES.get(company.get("company_category", ""))
+    if role:
+        summary += f" [{role}]"
 
     return summary
 
