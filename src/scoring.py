@@ -140,6 +140,12 @@ def score_company(company: dict) -> dict:
     company["lead_priority"] = priority
     company["has_active_projects"] = _detect_projects(text)
 
+    # Populate project_count and project_names from matched keywords
+    matched = _find_project_keywords(text)
+    company["project_count"] = len(matched)
+    if matched:
+        company["project_names"] = ", ".join(matched)
+
     return company
 
 
@@ -198,6 +204,16 @@ def _get_analysis_text(company: dict) -> str:
 def _detect_projects(text: str) -> bool:
     text_lower = text.lower()
     return any(kw.lower() in text_lower for kw in PROJECT_KEYWORDS_EN + PROJECT_KEYWORDS_HY)
+
+
+def _find_project_keywords(text: str) -> list[str]:
+    """Find which project keywords match in the text. Returns list of matched keywords."""
+    text_lower = text.lower()
+    matched = []
+    for kw in PROJECT_KEYWORDS_EN:
+        if kw.lower() in text_lower:
+            matched.append(kw)
+    return matched
 
 
 def normalize_phone(phone: str) -> str:

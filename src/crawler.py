@@ -99,9 +99,10 @@ class ScrapingAgent:
 
 class BatchBuffer:
     """Buffer that flushes every BATCH_SIZE rows or on manual flush."""
-    def __init__(self, batch_size: int = BATCH_SIZE):
+    def __init__(self, batch_size: int = BATCH_SIZE, on_flush=None):
         self.batch_size = batch_size
         self.buffer = []
+        self.on_flush = on_flush
 
     def add(self, company: dict):
         self.buffer.append(company)
@@ -112,6 +113,8 @@ class BatchBuffer:
     def flush(self) -> list[dict]:
         batch = self.buffer[:]
         self.buffer = []
+        if self.on_flush and batch:
+            self.on_flush(batch)
         return batch
 
     @property
@@ -561,7 +564,7 @@ def _enrich_company(args: tuple) -> dict:
     return company
 
 
-def run_source(source_key: str, source_config: dict, agents: list[ScrapingAgent], buffer: BatchBuffer) -> list[dict]:
+def run_source(source_key: str, source_config: dict, agents: list[ScrapingAgent], buffer: BatchBuffer, max_pages: int = None) -> list[dict]:
     """Crawl a single source and add to buffer."""
     base_url = source_config["base_url"]
     listing_pages = source_config["listing_pages"]
@@ -596,8 +599,8 @@ def run_source(source_key: str, source_config: dict, agents: list[ScrapingAgent]
     elif source_config.get("page_pagination"):
         # Use requests with page number pagination
         page_num = 1
-        max_pages = 20
-        while page_num <= max_pages:
+        spyur_max = max_pages if max_pages else 20
+        while page_num <= spyur_max:
             url = base_url + listing_pages[0].replace("advanced_search", f"advanced_search-{page_num}" if page_num > 1 else "advanced_search")
             if page_num == 1:
                 url = base_url + listing_pages[0]
@@ -632,7 +635,8 @@ def run_source(source_key: str, source_config: dict, agents: list[ScrapingAgent]
                     "%D5%BF", "%D6%80", "%D6%81", "%D6%82", "%D6%83",
                     "%D6%84", "%D6%85", "%D6%86",
                 ]
-                for i, letter in enumerate(letters):
+                letter_limit = max_pages if max_pages else len(letters)
+                for i, letter in enumerate(letters[:letter_limit]):
                     page_url = f"{base_url}{listing_page}?letter={letter}"
                     html = agents[(i + 1) % len(agents)].fetch(page_url)
                     if html:
@@ -680,27 +684,27 @@ def run_source(source_key: str, source_config: dict, agents: list[ScrapingAgent]
             if i % 20 == 0 or i == len(futures):
                 log.info(f"      Profiles: {i}/{len(futures)}")
 
-    # Enrich
-    if companies:
-        enrich_args = [(company, agents[i % len(agents)]) for i, company in enumerate(companies)]
-        with ThreadPoolExecutor(max_workers=min(len(agents), len(companies))) as executor:
-            futures = [executor.submit(_enrich_company, args) for args in enrich_args]
-            companies = [f.result() for f in as_completed(futures)]
-
-    # Add to batch buffer
+    # Add to batch buffer BEFORE enrichment so data is saved even if interrupted
     flushed = 0
     for company in companies:
         batch = buffer.add(company)
         if batch:
             flushed += len(batch)
 
+    # Enrich (slow — visits company websites for emails/phones)
+    if companies:
+        enrich_args = [(company, agents[i % len(agents)]) for i, company in enumerate(companies)]
+        with ThreadPoolExecutor(max_workers=min(len(agents), len(companies))) as executor:
+            futures = [executor.submit(_enrich_company, args) for args in enrich_args]
+            companies = [f.result() for f in as_completed(futures)]
+
     return companies
 
 
-def run_crawler(num_agents: int = MAX_WORKERS, sources: list[str] = None) -> tuple[list[dict], BatchBuffer]:
-    """Main crawler. Returns all companies and the buffer for final flush."""
+def run_crawler(num_agents: int = MAX_WORKERS, sources: list[str] = None, max_pages_per_source: dict = None, on_flush=None) -> list[dict]:
+    """Main crawler. Returns all companies."""
     agents = create_agents(num_agents)
-    buffer = BatchBuffer()
+    buffer = BatchBuffer(on_flush=on_flush)
 
     if sources is None:
         sources = list(SOURCES.keys())
@@ -726,7 +730,8 @@ def run_crawler(num_agents: int = MAX_WORKERS, sources: list[str] = None) -> tup
         if source_key not in SOURCES:
             log.warning(f"  Unknown source: {source_key}")
             continue
-        companies = run_source(source_key, SOURCES[source_key], agents, buffer)
+        max_pages = (max_pages_per_source or {}).get(source_key)
+        companies = run_source(source_key, SOURCES[source_key], agents, buffer, max_pages=max_pages)
         all_companies.extend(companies)
 
     # Final flush
@@ -737,4 +742,4 @@ def run_crawler(num_agents: int = MAX_WORKERS, sources: list[str] = None) -> tup
     total_requests = sum(a.requests_made for a in agents)
     log.info(f"  Total: {len(all_companies)} companies, {total_requests} requests")
 
-    return all_companies, buffer
+    return all_companies

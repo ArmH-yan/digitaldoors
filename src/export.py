@@ -32,7 +32,8 @@ def export_all_companies(companies: list[dict], timestamp: str = None) -> str:
         "facebook_url", "instagram_url", "linkedin_url",
         "company_category", "company_description", "services",
         "contact_page_url", "source_url", "has_active_projects",
-        "project_count", "project_names", "lead_score", "lead_priority"
+        "project_count", "project_names", "lead_score", "lead_priority",
+        "company_intelligence", "source_site"
     ]
 
     _write_csv(filepath, companies, columns)

@@ -1,6 +1,7 @@
 """
 Lead Generation v2 — Google Sheets Sync
 Sync unsynced companies to Google Sheets warehouse.
+Each source gets its own worksheet tab.
 """
 
 import os
@@ -19,12 +20,21 @@ except ImportError:
 
 SPREADSHEET_ID = os.getenv("GOOGLE_SHEET_ID", "")
 CREDS_FILE = os.getenv("GOOGLE_CREDS_FILE", "credentials/gsheets_key.json")
-SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "Leads")
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
+
+# Source key -> worksheet tab name
+SOURCE_WORKSHEETS = {
+    "construction.am": "Construction Leads",
+    "spyur.am": "Spyur Leads",
+    "defansehousing": "Defanse Leads",
+    "norakaruyc.am": "Norakaruyc Leads",
+}
+
+DEFAULT_WORKSHEET = "Leads"
 
 HEADERS = [
     "company_name", "website", "phone", "email", "address", "city",
@@ -58,7 +68,12 @@ def get_gspread_client():
     return gspread.authorize(creds)
 
 
-def sync_to_sheets(companies: list[dict]) -> int:
+def _get_worksheet_name(source_site: str) -> str:
+    """Map source_site to worksheet tab name."""
+    return SOURCE_WORKSHEETS.get(source_site, DEFAULT_WORKSHEET)
+
+
+def sync_to_sheets(companies: list[dict], worksheet_name: str = None) -> int:
     """Sync companies to Google Sheets. Updates existing rows, appends new ones."""
     if not SPREADSHEET_ID:
         log.warning("  GOOGLE_SHEET_ID not set. Skipping sync.")
@@ -74,11 +89,18 @@ def sync_to_sheets(companies: list[dict]) -> int:
         log.error(f"  Cannot open spreadsheet: {e}")
         return 0
 
+    # Determine worksheet name from first company's source if not provided
+    if not worksheet_name and companies:
+        worksheet_name = _get_worksheet_name(companies[0].get("source_site", ""))
+    if not worksheet_name:
+        worksheet_name = DEFAULT_WORKSHEET
+
     # Get or create worksheet
     try:
-        worksheet = spreadsheet.worksheet(SHEET_NAME)
+        worksheet = spreadsheet.worksheet(worksheet_name)
     except gspread.exceptions.WorksheetNotFound:
-        worksheet = spreadsheet.add_worksheet(title=SHEET_NAME, rows=1000, cols=len(HEADERS) + 1)
+        worksheet = spreadsheet.add_worksheet(title=worksheet_name, rows=1000, cols=len(HEADERS) + 1)
+        log.info(f"  Created worksheet: {worksheet_name}")
 
     # Make sure display headers are set as first row
     ensure_headers(worksheet)
@@ -96,7 +118,7 @@ def sync_to_sheets(companies: list[dict]) -> int:
                 key = _dedup_key(row[name_idx], row[phone_idx], row[addr_idx])
                 if key:
                     existing_map[key] = i  # row number in the sheet (1-based, row 1 = header)
-            log.info(f"  Found {len(existing_map)} existing rows in sheet")
+            log.info(f"  [{worksheet_name}] Found {len(existing_map)} existing rows")
     except Exception as e:
         log.warning(f"  Could not read existing sheet data: {e}")
 
@@ -125,31 +147,30 @@ def sync_to_sheets(companies: list[dict]) -> int:
     # Batch update existing rows
     if updates:
         try:
-            # gspread batch_update_cells: update by ranges
             cell_list = []
             for row_num, row_data in updates:
                 for col_idx, val in enumerate(row_data):
-                    cell_list.append(gspread.Cell(row=row_num, column=col_idx + 1, value=val))
+                    cell_list.append(gspread.Cell(row=row_num, col=col_idx + 1, value=val))
             worksheet.update_cells(cell_list)
             updated = len(updates)
-            log.info(f"  Updated {updated} existing rows")
+            log.info(f"  [{worksheet_name}] Updated {updated} existing rows")
         except Exception as e:
-            log.error(f"  Batch update failed: {e}")
+            log.error(f"  [{worksheet_name}] Batch update failed: {e}")
 
     # Append new rows
     if appends:
         try:
             worksheet.append_rows(appends, value_input_option="USER_ENTERED")
             appended = len(appends)
-            log.info(f"  Appended {appended} new rows")
+            log.info(f"  [{worksheet_name}] Appended {appended} new rows")
         except Exception as e:
-            log.error(f"  Append failed: {e}")
+            log.error(f"  [{worksheet_name}] Append failed: {e}")
 
     total = updated + appended
     if total == 0:
-        log.info("  No changes to sync")
+        log.info(f"  [{worksheet_name}] No changes to sync")
     else:
-        log.info(f"  Sync complete: {updated} updated, {appended} new")
+        log.info(f"  [{worksheet_name}] Sync complete: {updated} updated, {appended} new")
     return total
 
 
@@ -163,15 +184,22 @@ def _company_to_row(company: dict) -> list[str]:
         elif h == "lead_score":
             val = str(val) if val else "0"
         else:
-            val = str(val) if val is not None else ""
+            if val is None or (isinstance(val, float) and val != val):  # NaN check
+                val = ""
+            else:
+                val = str(val)
         row.append(val)
     return row
 
 
 def _dedup_key(name: str, phone: str, address: str) -> str:
     """Build a normalized dedup key from company name, phone, and address."""
-    parts = [name.strip().lower(), phone.strip(), address.strip().lower()]
-    return "|".join(parts)
+    name = str(name).strip().lower() if name else ""
+    phone = str(phone).strip() if phone else ""
+    address = str(address).strip().lower() if address else ""
+    if not name and not phone:
+        return ""
+    return "|".join([name, phone, address])
 
 
 def ensure_headers(worksheet):

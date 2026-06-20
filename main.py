@@ -49,7 +49,7 @@ from src.database import (
     get_summary,
 )
 
-from src.crawler import run_crawler
+from src.crawler import run_crawler, SOURCES
 from src.scoring import (
     score_company,
     generate_intelligence,
@@ -63,8 +63,87 @@ from src.export import (
     generate_summary_report,
 )
 
+PAGE_LIMITS = {
+    "construction_am": 38,
+    "spyur_am": 20,
+}
 
-def run_pipeline(sources: list[str] = None):
+
+def get_user_config(sources: list[str]) -> dict:
+    """Prompt user for max pages per source. Returns dict of source -> max_pages."""
+    config = {}
+    for source in sources:
+        max_allowed = PAGE_LIMITS.get(source)
+        if max_allowed is None:
+            continue
+        try:
+            ans = input(
+                f"  Max pages for {source}? (1-{max_allowed}, Enter=all): "
+            ).strip()
+            if ans:
+                val = int(ans)
+                if 1 <= val <= max_allowed:
+                    config[source] = val
+                else:
+                    print(f"    Invalid, using all {max_allowed} pages")
+            else:
+                print(f"    Using all {max_allowed} pages")
+        except (ValueError, EOFError):
+            print(f"    Using all {max_allowed} pages")
+    return config
+
+
+def _store_company(engine, company: dict):
+    """Store a single company and its contacts in the database."""
+    company_id = upsert_company(engine, company)
+
+    project_names = company.get("project_names", "")
+    if project_names:
+        for name in project_names.split(", "):
+            if name.strip():
+                insert_project(
+                    engine,
+                    company_id,
+                    name.strip(),
+                    source=company.get("source_url"),
+                )
+
+    if company.get("phone"):
+        insert_contact(
+            engine,
+            company_id,
+            "phone",
+            company["phone"],
+            company.get("source_url"),
+        )
+
+    if company.get("email"):
+        insert_contact(
+            engine,
+            company_id,
+            "email",
+            company["email"],
+            company.get("source_url"),
+        )
+
+    return company_id
+
+
+def _sync_batch(engine, log):
+    """Sync all unsynced companies from DB to Google Sheets."""
+    unsynced = get_unsynced_companies(engine)
+    if unsynced.empty:
+        return 0
+    unsynced_list = unsynced.to_dict("records")
+    synced_count = sync_to_sheets(unsynced_list)
+    if synced_count > 0:
+        ids = unsynced["id"].tolist()
+        mark_synced(engine, ids)
+        log.info(f"    Synced {len(ids)} companies to Google Sheets")
+    return synced_count
+
+
+def run_pipeline(sources: list[str] = None, config: dict = None):
     start = time.time()
     run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
@@ -83,109 +162,122 @@ def run_pipeline(sources: list[str] = None):
     if not GOOGLE_SHEET_NAME:
         log.warning("GOOGLE_SHEET_NAME not found in .env")
 
+    # Graceful shutdown handling
+    interrupted = False
+
+    def handle_interrupt(sig, frame):
+        nonlocal interrupted
+        if interrupted:
+            log.warning("  Force exit.")
+            sys.exit(1)
+        log.warning("  Interrupt received — finishing current batch...")
+        interrupted = True
+
+    signal.signal(signal.SIGINT, handle_interrupt)
+    signal.signal(signal.SIGTERM, handle_interrupt)
+
     # Step 1: Init database
-    log.info("[1/5] Initializing database schema...")
+    log.info("[1/4] Initializing database schema...")
     engine = get_engine()
     init_schema()
 
-    # Step 2: Crawl companies
-    log.info("[2/5] Crawling web sources...")
-    companies, buffer = run_crawler(num_agents=5, sources=sources)
-    log.info(f"  Found {len(companies)} companies")
+    # Step 2: Crawl + score + store per source (incremental)
+    log.info("[2/4] Crawling web sources...")
+    if sources is None:
+        sources = list(SOURCES.keys())
 
-    # Step 3: Score and normalize
-    log.info("[3/5] Scoring and normalizing leads...")
-    for company in companies:
-        normalize_company(company)
-        score_company(company)
-        company["company_intelligence"] = generate_intelligence(company)
-        company["run_id"] = run_id
+    max_pages_per_source = config or {}
 
-    companies.sort(
-        key=lambda x: x.get("lead_score", 0),
-        reverse=True
-    )
+    all_companies = []
 
-    # Step 4: Store in database
-    log.info("[4/5] Storing in database (temp)...")
-    for company in companies:
-        company_id = upsert_company(engine, company)
+    # Process each source individually for incremental save
+    from src.crawler import run_source, create_agents, BatchBuffer
 
-        project_names = company.get("project_names", "")
-        if project_names:
-            for name in project_names.split(", "):
-                if name.strip():
-                    insert_project(
-                        engine,
-                        company_id,
-                        name.strip(),
-                        source=company.get("source_url")
-                    )
+    agents = create_agents(5)
 
-        if company.get("phone"):
-            insert_contact(
-                engine,
-                company_id,
-                "phone",
-                company["phone"],
-                company.get("source_url")
-            )
+    # Handle defanse_housing separately (targeted scraper)
+    if "defanse_housing" in sources:
+        from src.scrapers.defanse_housing import DefanseHousingScraper
+        if interrupted:
+            log.warning("  Stopped before defanse_housing")
+        else:
+            log.info("  Source: defanse_housing (targeted)")
+            dh = DefanseHousingScraper()
+            dh_companies = dh.run()
 
-        if company.get("email"):
-            insert_contact(
-                engine,
-                company_id,
-                "email",
-                company["email"],
-                company.get("source_url")
-            )
+            # Score, store, sync
+            for c in dh_companies:
+                normalize_company(c)
+                score_company(c)
+                c["company_intelligence"] = generate_intelligence(c)
+                _store_company(engine, c)
+            _sync_batch(engine, log)
 
-    log.info(f"  Stored {len(companies)} companies in database")
+            all_companies.extend(dh_companies)
+            log.info(f"    defanse_housing: {len(dh_companies)} companies saved")
+        sources = [s for s in sources if s != "defanse_housing"]
 
-    # Step 5: Sync to Google Sheets
-    log.info("[5/5] Syncing to Google Sheets...")
-    unsynced = get_unsynced_companies(engine)
+    # Process directory sources
+    for source_key in sources:
+        if interrupted:
+            log.warning(f"  Stopped before {source_key}")
+            break
+        if source_key not in SOURCES:
+            log.warning(f"  Unknown source: {source_key}")
+            continue
 
-    if not unsynced.empty:
-        unsynced_list = unsynced.to_dict("records")
-        synced_count = sync_to_sheets(unsynced_list)
+        max_pages = max_pages_per_source.get(source_key)
 
-        if synced_count > 0:
-            ids = unsynced["id"].tolist()
-            mark_synced(engine, ids)
-            log.info(f"  Marked {len(ids)} companies as synced")
-    else:
-        log.info("  No unsynced companies")
+        def on_batch_flush(batch):
+            """Callback: score + store + sync every 100 profiles."""
+            for c in batch:
+                normalize_company(c)
+                score_company(c)
+                c["company_intelligence"] = generate_intelligence(c)
+                _store_company(engine, c)
+            _sync_batch(engine, log)
+
+        buffer = BatchBuffer(on_flush=on_batch_flush)
+        companies = run_source(source_key, SOURCES[source_key], agents, buffer, max_pages=max_pages)
+
+        # Score remaining items in buffer
+        remaining = buffer.buffer[:]
+        buffer.buffer.clear()
+        for c in remaining:
+            normalize_company(c)
+            score_company(c)
+            c["company_intelligence"] = generate_intelligence(c)
+            _store_company(engine, c)
+
+        # Final sync for this source
+        _sync_batch(engine, log)
+
+        all_companies.extend(companies)
+        all_companies.extend(remaining)
+        log.info(f"  {source_key}: {len(companies) + len(remaining)} companies saved")
 
     # Export local files
     log.info("[EXPORT] Generating exports...")
-    export_all_companies(companies, run_id)
-    export_qualified_leads(companies, run_id)
-    generate_summary_report(companies, run_id)
-
-    # Optional purge synced data
-    # purge_synced(engine)
+    export_all_companies(all_companies, run_id)
+    export_qualified_leads(all_companies, run_id)
+    generate_summary_report(all_companies, run_id)
 
     # Summary
     elapsed = round(time.time() - start, 2)
-    hot = sum(
-        1 for c in companies
-        if c.get("lead_priority") == "HOT"
-    )
-    warm = sum(
-        1 for c in companies
-        if c.get("lead_priority") == "WARM"
-    )
+    hot = sum(1 for c in all_companies if c.get("lead_priority") == "HOT")
+    warm = sum(1 for c in all_companies if c.get("lead_priority") == "WARM")
 
     log.info("=" * 60)
     log.info(f"  PIPELINE COMPLETE in {elapsed}s")
     log.info(f"  Run ID:          {run_id}")
-    log.info(f"  Total companies: {len(companies)}")
+    log.info(f"  Total companies: {len(all_companies)}")
     log.info(f"  HOT leads:       {hot}")
     log.info(f"  WARM leads:      {warm}")
+    if interrupted:
+        log.info(f"  (Interrupted — partial results saved)")
     log.info("=" * 60)
 
-    return companies
+    return all_companies
 
 
 def run_scheduled():
@@ -230,7 +322,14 @@ def main():
 
         sources = sys.argv[1:]
 
-    run_pipeline(sources=sources)
+    # Prompt for page limits
+    config = None
+    if sources:
+        config = get_user_config(sources)
+    else:
+        config = get_user_config(list(SOURCES.keys()))
+
+    run_pipeline(sources=sources, config=config)
 
 
 if __name__ == "__main__":
